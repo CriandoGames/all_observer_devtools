@@ -1,0 +1,48 @@
+{
+  "protocolVersion": 1,
+  "sessionId": "session-fixture",
+  "firstSequenceNumber": 10,
+  "lastSequenceNumber": 11,
+  "events": [
+    {
+      "protocolVersion": 1,
+      "sessionId": "session-fixture",
+      "eventId": "event-1",
+      "sequenceNumber": 10,
+      "timestampMicros": 5000,
+      "eventType": "nodeCreated",
+      "objectId": 1,
+      "kind": "observable",
+      "debugLabel": "counter",
+      "debugType": "int",
+      "initialValueSummary": {
+        "type": "int",
+        "display": "0",
+        "isRedacted": false,
+        "isTruncated": false
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "sessionId": "session-fixture",
+      "eventId": "event-2",
+      "sequenceNumber": 11,
+      "timestampMicros": 5100,
+      "eventType": "nodeUpdated",
+      "objectId": 1,
+      "kind": "observable",
+      "oldValueSummary": {
+        "type": "int",
+        "display": "0",
+        "isRedacted": false,
+        "isTruncated": false
+      },
+      "newValueSummary": {
+        "type": "int",
+        "display": "1",
+        "isRedacted": false,
+        "isTruncated": false
+      }
+    }
+  ]
+}

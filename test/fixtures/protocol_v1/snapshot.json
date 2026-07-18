@@ -1,0 +1,50 @@
+{
+  "protocolVersion": 1,
+  "sessionId": "session-fixture",
+  "generatedAtMicros": 2000,
+  "lastSequenceNumber": 5,
+  "droppedEventCount": 0,
+  "firstAvailableSequence": 1,
+  "lastAvailableSequence": 5,
+  "nodes": [
+    {
+      "objectId": 1,
+      "kind": "observable",
+      "debugLabel": "counter",
+      "debugType": "int",
+      "createdAtMicros": 1000,
+      "valueSummary": {
+        "type": "int",
+        "display": "0",
+        "isRedacted": false,
+        "isTruncated": false
+      }
+    },
+    {
+      "objectId": 2,
+      "kind": "computed",
+      "debugLabel": "doubled",
+      "debugType": "int",
+      "createdAtMicros": 1100,
+      "valueSummary": null
+    }
+  ],
+  "dependencies": [
+    {
+      "trackerId": 2,
+      "dependencyIds": [1]
+    }
+  ],
+  "scopes": [
+    {
+      "scopeId": 3,
+      "debugLabel": "homeScope",
+      "resources": [
+        {
+          "resourceId": 4,
+          "resourceKind": "subscription"
+        }
+      ]
+    }
+  ]
+}
