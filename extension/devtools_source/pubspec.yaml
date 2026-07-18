@@ -1,0 +1,37 @@
+name: all_observer_devtools_extension
+description: >-
+  Flutter Web DevTools extension panel for all_observer_devtools. Source-only
+  package: never published to pub.dev. Its build output is copied into
+  ../devtools/build via `dart run devtools_extensions build_and_copy`.
+version: 0.1.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.9.2
+  # Matches devtools_extensions 0.5.1's own minimum; also required for
+  # Color.withValues (used in connection_banner.dart).
+  flutter: ">=3.27.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Used only for this extension's own UI reactivity (Observable/Observer/
+  # Computed/ScopedObserverMixin) — never for Observer Protocol decoding,
+  # which stays in lib/src/models and lib/src/connection. Matches the
+  # runtime bridge's git ref so both packages track the same all_observer
+  # revision even though they resolve independently.
+  all_observer:
+    git:
+      url: https://github.com/CriandoGames/all_observer.git
+      ref: protocol-v1
+  devtools_extensions: ^0.5.1
+  devtools_app_shared: ^0.5.1
+  vm_service: '>=13.0.0 <16.0.0'
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

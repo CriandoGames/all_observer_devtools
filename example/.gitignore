@@ -1,0 +1,17 @@
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+pubspec.lock
+
+# Platform folders are generated locally via `flutter create` (see
+# README.md) and intentionally not checked in from this template state.
+android/
+ios/
+linux/
+macos/
+windows/
+web/

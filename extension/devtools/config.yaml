@@ -1,0 +1,5 @@
+name: all_observer
+issueTracker: https://github.com/CriandoGames/all_observer_devtools/issues
+version: 0.1.0
+materialIconCodePoint: '0xe8f4'
+requiresConnection: true
