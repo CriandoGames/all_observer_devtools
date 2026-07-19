@@ -11,7 +11,7 @@ final class DependencyModel {
     final Object? trackerId = json['trackerId'];
     final Object? dependencyIds = json['dependencyIds'];
     if (trackerId is! int || dependencyIds is! List) {
-      throw ProtocolDecodeError('Malformed dependency snapshot entry: $json');
+      throw ProtocolDecodeError('Malformed dependency snapshot entry.');
     }
     return DependencyModel(
       trackerId: trackerId,

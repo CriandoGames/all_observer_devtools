@@ -65,4 +65,34 @@ void main() {
       expect(changed.sessionId, isNot(oldSession));
     },
   );
+
+  test(
+    'decodes several events and an afterSequence at the current tail',
+    () async {
+      ObserverProtocol.reset();
+      ObserverProtocol.configure(
+        const ObserverProtocolConfig(enabled: true, eventBufferSize: 10),
+      );
+      final value = Observable<int>(0, name: 'many-events');
+      addTearDown(value.close);
+      final afterCreate = ObserverProtocol.lastSequenceNumber;
+      value
+        ..value = 1
+        ..value = 2
+        ..value = 3;
+
+      final several = await client.getEvents(afterSequence: afterCreate);
+      expect(several.events, hasLength(3));
+      expect(
+        several.events.map((event) => event.sequenceNumber),
+        orderedEquals(<int>[afterCreate + 1, afterCreate + 2, afterCreate + 3]),
+      );
+
+      final currentTail = ObserverProtocol.lastSequenceNumber;
+      final atTail = await client.getEvents(afterSequence: currentTail);
+      expect(atTail.events, isEmpty);
+      expect(atTail.firstSequenceNumber, isNull);
+      expect(atTail.lastSequenceNumber, currentTail);
+    },
+  );
 }

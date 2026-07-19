@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:all_observer/all_observer.dart';
 import 'package:all_observer_devtools_extension/src/connection/connection_controller.dart';
 import 'package:all_observer_devtools_extension/src/connection/connection_state.dart';
 import 'package:all_observer_devtools_extension/src/connection/protocol_client.dart';
@@ -57,6 +58,23 @@ Map<String, Object?> _nodeCreatedEventJson({
   'initialValueSummary': null,
 };
 
+Map<String, Object?> _nodeUpdatedEventJson({
+  required String sessionId,
+  required int sequenceNumber,
+  required int objectId,
+}) => <String, Object?>{
+  'protocolVersion': 1,
+  'sessionId': sessionId,
+  'eventId': 'event-$sequenceNumber',
+  'sequenceNumber': sequenceNumber,
+  'timestampMicros': sequenceNumber * 1000,
+  'eventType': 'nodeUpdated',
+  'objectId': objectId,
+  'kind': 'observable',
+  'oldValueSummary': null,
+  'newValueSummary': null,
+};
+
 /// Minimal fake VM Service adapter: canned protocol-info/snapshot
 /// responses, with the snapshot response advancing through a queue so a
 /// test can simulate "state after resync differs from state before".
@@ -102,6 +120,34 @@ final class _FakeExtensionCaller {
         throw StateError('Unexpected method in test fake: $method');
     }
   }
+}
+
+/// Deliberately non-conforming transport used to prove logical cancellation:
+/// it can deliver one callback even after its subscription was cancelled.
+/// Real transports may have an already-queued callback at dispose time.
+final class _LateDeliveryStream extends Stream<EventBatchModel> {
+  void Function(EventBatchModel)? _onData;
+
+  @override
+  StreamSubscription<EventBatchModel> listen(
+    void Function(EventBatchModel)? onData, {
+    Function? onError,
+    void Function()? onDone,
+    bool? cancelOnError,
+  }) {
+    _onData = onData;
+    return _LateSubscription<EventBatchModel>();
+  }
+
+  void emit(EventBatchModel batch) => _onData?.call(batch);
+}
+
+final class _LateSubscription<T> implements StreamSubscription<T> {
+  @override
+  Future<void> cancel() async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 void main() {
@@ -260,6 +306,106 @@ void main() {
 
   group('snapshot/event race (section 12)', () {
     test(
+      'retries when the polling session changed after the snapshot',
+      () async {
+        var snapshotCalls = 0;
+        var eventsCalls = 0;
+
+        Future<Map<String, Object?>> call(
+          String method,
+          Map<String, String> args,
+        ) async {
+          switch (method) {
+            case 'ext.all_observer.getProtocolInfo':
+              return _ok(_protocolInfoJson());
+            case 'ext.all_observer.setStreaming':
+              return _ok(<String, Object?>{'streamingEnabled': true});
+            case 'ext.all_observer.getSnapshot':
+              snapshotCalls++;
+              return _ok(
+                _snapshotJson(
+                  sessionId: snapshotCalls == 1 ? 'old-session' : 'new-session',
+                  lastSequenceNumber: 0,
+                ),
+              );
+            case 'ext.all_observer.getEvents':
+              eventsCalls++;
+              return _ok(<String, Object?>{
+                'protocolVersion': 1,
+                'sessionId': 'new-session',
+                'firstSequenceNumber': null,
+                'lastSequenceNumber': 0,
+                'events': <Object?>[],
+              });
+            default:
+              throw StateError(method);
+          }
+        }
+
+        final controller = ConnectionController(
+          client: ProtocolClient(callExtension: call),
+          liveEvents: const Stream<EventBatchModel>.empty(),
+        );
+        addTearDown(controller.dispose);
+
+        await controller.connect();
+
+        expect(controller.state, DevToolsConnectionState.connected);
+        expect(controller.store.sessionId, 'new-session');
+        expect(snapshotCalls, 2);
+        expect(eventsCalls, 2);
+      },
+    );
+
+    test(
+      'retries when polling proves an unrepresented sequence tail',
+      () async {
+        var snapshotCalls = 0;
+        Future<Map<String, Object?>> call(
+          String method,
+          Map<String, String> args,
+        ) async {
+          switch (method) {
+            case 'ext.all_observer.getProtocolInfo':
+              return _ok(_protocolInfoJson());
+            case 'ext.all_observer.setStreaming':
+              return _ok(<String, Object?>{'streamingEnabled': true});
+            case 'ext.all_observer.getSnapshot':
+              snapshotCalls++;
+              return _ok(
+                _snapshotJson(
+                  sessionId: 's1',
+                  lastSequenceNumber: snapshotCalls == 1 ? 0 : 1,
+                ),
+              );
+            case 'ext.all_observer.getEvents':
+              return _ok(<String, Object?>{
+                'protocolVersion': 1,
+                'sessionId': 's1',
+                'firstSequenceNumber': null,
+                'lastSequenceNumber': 1,
+                'events': <Object?>[],
+              });
+            default:
+              throw StateError(method);
+          }
+        }
+
+        final controller = ConnectionController(
+          client: ProtocolClient(callExtension: call),
+          liveEvents: const Stream<EventBatchModel>.empty(),
+        );
+        addTearDown(controller.dispose);
+
+        await controller.connect();
+
+        expect(controller.state, DevToolsConnectionState.connected);
+        expect(controller.store.lastAppliedSequence, 1);
+        expect(snapshotCalls, 2);
+      },
+    );
+
+    test(
       'enables real streaming before snapshot and closes the backlog window',
       () async {
         final liveController = StreamController<EventBatchModel>.broadcast();
@@ -395,6 +541,51 @@ void main() {
   });
 
   group('gap-triggered resync', () {
+    test('a semantic inconsistency also triggers a fresh snapshot', () async {
+      final liveController = StreamController<EventBatchModel>.broadcast();
+      addTearDown(liveController.close);
+      final fake = _FakeExtensionCaller(
+        protocolInfoJson: _protocolInfoJson(),
+        snapshotJsonQueue: [
+          _snapshotJson(sessionId: 's1', lastSequenceNumber: 0),
+          _snapshotJson(sessionId: 's1', lastSequenceNumber: 1),
+        ],
+      );
+      final controller = ConnectionController(
+        client: ProtocolClient(callExtension: fake.call),
+        liveEvents: liveController.stream,
+      );
+      addTearDown(controller.dispose);
+      await controller.connect();
+      fake.eventsJson = <String, Object?>{
+        'protocolVersion': 1,
+        'sessionId': 's1',
+        'firstSequenceNumber': null,
+        'lastSequenceNumber': 1,
+        'events': <Object?>[],
+      };
+
+      final update = ProtocolEventModel.fromJson(
+        _nodeUpdatedEventJson(sessionId: 's1', sequenceNumber: 1, objectId: 99),
+      );
+      liveController.add(
+        EventBatchModel(
+          protocolVersion: 1,
+          sessionId: 's1',
+          firstSequenceNumber: 1,
+          lastSequenceNumber: 1,
+          events: <ProtocolEventModel>[update],
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(fake.getSnapshotCallCount, 2);
+      expect(controller.store.lastAppliedSequence, 1);
+      expect(controller.store.needsResync, isFalse);
+      expect(controller.state, DevToolsConnectionState.connected);
+    });
+
     test(
       'a sequence gap on the live stream triggers a fresh snapshot and recovers',
       () async {
@@ -415,6 +606,16 @@ void main() {
 
         await controller.connect();
         expect(controller.state, DevToolsConnectionState.connected);
+
+        // The real registrar reports the protocol's current tail even when
+        // the filtered polling response is empty.
+        fake.eventsJson = <String, Object?>{
+          'protocolVersion': 1,
+          'sessionId': 's1',
+          'firstSequenceNumber': null,
+          'lastSequenceNumber': 10,
+          'events': <Object?>[],
+        };
 
         // Sequence 5 while the store is only caught up to 0: a gap.
         liveController.add(
@@ -472,7 +673,7 @@ void main() {
               'protocolVersion': 1,
               'sessionId': 's1',
               'firstSequenceNumber': null,
-              'lastSequenceNumber': 0,
+              'lastSequenceNumber': snapshotCalls > 1 ? 7 : 0,
               'events': <Object?>[],
             });
           default:
@@ -565,5 +766,119 @@ void main() {
         expect(snapshotCalls, 2);
       },
     );
+
+    test(
+      'a gap-triggered snapshot failure is handled and can recover',
+      () async {
+        final liveController = StreamController<EventBatchModel>.broadcast();
+        addTearDown(liveController.close);
+        var snapshotCalls = 0;
+        Future<Map<String, Object?>> call(
+          String method,
+          Map<String, String> args,
+        ) async {
+          switch (method) {
+            case 'ext.all_observer.getProtocolInfo':
+              return _ok(_protocolInfoJson());
+            case 'ext.all_observer.setStreaming':
+              return _ok(<String, Object?>{'streamingEnabled': true});
+            case 'ext.all_observer.getSnapshot':
+              snapshotCalls++;
+              if (snapshotCalls == 2) {
+                throw StateError('sensitive snapshot detail');
+              }
+              return _ok(
+                _snapshotJson(
+                  sessionId: 's1',
+                  lastSequenceNumber: snapshotCalls == 1 ? 0 : 10,
+                ),
+              );
+            case 'ext.all_observer.getEvents':
+              return _ok(<String, Object?>{
+                'protocolVersion': 1,
+                'sessionId': 's1',
+                'firstSequenceNumber': null,
+                'lastSequenceNumber': snapshotCalls > 1 ? 10 : 0,
+                'events': <Object?>[],
+              });
+            default:
+              throw StateError(method);
+          }
+        }
+
+        final controller = ConnectionController(
+          client: ProtocolClient(callExtension: call),
+          liveEvents: liveController.stream,
+        );
+        addTearDown(controller.dispose);
+        await controller.connect();
+
+        EventBatchModel gap(int sequence) => EventBatchModel(
+          protocolVersion: 1,
+          sessionId: 's1',
+          firstSequenceNumber: sequence,
+          lastSequenceNumber: sequence,
+          events: <ProtocolEventModel>[
+            ProtocolEventModel.fromJson(
+              _nodeCreatedEventJson(
+                sessionId: 's1',
+                sequenceNumber: sequence,
+                objectId: sequence,
+              ),
+            ),
+          ],
+        );
+
+        liveController.add(gap(5));
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        expect(controller.state, DevToolsConnectionState.error);
+        expect(
+          controller.errorMessage,
+          isNot(contains('sensitive snapshot detail')),
+        );
+
+        liveController.add(gap(6));
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        expect(controller.state, DevToolsConnectionState.connected);
+        expect(controller.store.lastAppliedSequence, 10);
+        expect(snapshotCalls, 3);
+      },
+    );
   });
+
+  test(
+    'dispose ignores a transport callback that was already queued',
+    () async {
+      ObserverConfig.strictMode = true;
+      addTearDown(ObserverConfig.reset);
+      final stream = _LateDeliveryStream();
+      final fake = _FakeExtensionCaller(
+        protocolInfoJson: _protocolInfoJson(),
+        snapshotJsonQueue: [
+          _snapshotJson(sessionId: 's1', lastSequenceNumber: 0),
+        ],
+      );
+      final controller = ConnectionController(
+        client: ProtocolClient(callExtension: fake.call),
+        liveEvents: stream,
+      );
+      await controller.connect();
+      controller.dispose();
+
+      final event = ProtocolEventModel.fromJson(
+        _nodeCreatedEventJson(sessionId: 's1', sequenceNumber: 1, objectId: 1),
+      );
+      final batch = EventBatchModel(
+        protocolVersion: 1,
+        sessionId: 's1',
+        firstSequenceNumber: 1,
+        lastSequenceNumber: 1,
+        events: <ProtocolEventModel>[event],
+      );
+
+      expect(() => stream.emit(batch), returnsNormally);
+    },
+  );
 }

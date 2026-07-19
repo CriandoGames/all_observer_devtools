@@ -5,14 +5,16 @@ Opt-in Flutter DevTools integration for
 diagnostics bridge from the Observer Protocol to the Dart VM Service.
 
 > **Status: release-candidate implementation, pending upstream protocol
-> publication and real-host smoke testing.** The package root ships the piece
+> publication and the remaining real-host matrix.** The package root ships the piece
 > an app depends on and initializes — the Observer Protocol
 > consumer, the `ext.all_observer.*` VM Service extensions, and the batched
 > event transport. `extension/` now also contains the Flutter Web DevTools
 > panel (Overview / Nodes / Timeline / Dependencies / Scopes / Warnings) that
 > reads this data. The panel is built into `extension/devtools/build`, the
 > adapter compiles against the locked DevTools packages, and an example app is
-> included. A real Chrome/DevTools smoke test is still required before release.
+> included. Chrome/DevTools discovery, enablement, handshake, streaming and
+> recovery into a new session have been exercised; the remaining manual matrix
+> is tracked in `RELEASE_AUDIT.md`.
 
 ## Installing
 
@@ -88,7 +90,7 @@ or `{"success": false, "error": {"code", "message"}}`:
 | `getEvents` | Buffered events with `sequenceNumber` greater than an optional `afterSequence` parameter. |
 | `setStreaming` | Turns the live batch transport on/off (`enabled=true`/`false`). Off by default. |
 | `clearBuffer` | Clears only this bridge's local batching buffer — never the core's own ring buffer. |
-| `getStatus` | Session id, streaming flag, buffered/dropped event counts (core ring-buffer *and* transport-layer, tracked separately), last sequence number. |
+| `getStatus` | Session id, streaming flag, buffered/dropped/explicitly-cleared event counts (core ring-buffer and transport-layer tracked separately), last sequence number. |
 
 Live events, once streaming is enabled, are posted as batches on the
 `all_observer:events` VM Service extension stream — ordered by
@@ -175,12 +177,15 @@ fresh snapshot (bounded retries); nothing is guessed or invented when data
 is missing — unknown node references and disposal failures surface as
 explicit diagnostics instead.
 
-**Known release blockers:**
+**Known release blockers and residual validation:**
 
 - The Observer Protocol v1 branch must be published as a numbered
   `all_observer` release before the Git dependency can be replaced.
-- A real Chrome/Flutter DevTools run must still cover isolate switching, hot
-  restart/reload, disconnect/reconnect, high-frequency events, and redaction.
+- The real Chrome/Flutter DevTools smoke has passed for discovery, enablement,
+  selected-isolate connection, snapshot/streaming and recovery into a new
+  session. Isolate switching, Flutter-command hot reload/restart, reconnecting
+  to a new process, sustained load, disposes, warnings and redaction
+  still require the full manual matrix recorded in `RELEASE_AUDIT.md`.
 - Dependencies screen is tabular only — no graph rendering (allowed by the
   spec as an MVP fallback).
 - Read-only by design: no way to trigger app actions from the panel.

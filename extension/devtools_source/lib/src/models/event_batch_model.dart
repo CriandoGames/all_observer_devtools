@@ -25,7 +25,9 @@ final class EventBatchModel {
     if (session is! String || session.isEmpty) {
       throw ProtocolDecodeError('Event batch sessionId is missing or invalid.');
     }
-    if ((first != null && first is! int) || (last != null && last is! int)) {
+    if ((first != null && (first is! int || first <= 0)) ||
+        last is! int ||
+        last < 0) {
       throw ProtocolDecodeError('Event batch sequence range is invalid.');
     }
     if (eventsJson is! List) {
@@ -42,7 +44,9 @@ final class EventBatchModel {
       }).toList();
       if (events.any(
         (event) =>
-            event.protocolVersion != version || event.sessionId != session,
+            event.protocolVersion != version ||
+            event.sessionId != session ||
+            event.sequenceNumber <= 0,
       )) {
         throw ProtocolDecodeError(
           'Event batch mixes protocol versions or sessions.',

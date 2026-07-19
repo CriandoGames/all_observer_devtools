@@ -28,7 +28,7 @@ Map<String, Object?> unwrapBridgeResponse(Map<String, Object?> json) {
     }
     throw BridgeResponseError(
       'malformed_envelope',
-      'Success response missing a "data" object: $json',
+      'Success response is missing a data object.',
     );
   }
   if (success == false) {
@@ -41,11 +41,11 @@ Map<String, Object?> unwrapBridgeResponse(Map<String, Object?> json) {
     }
     throw BridgeResponseError(
       'malformed_envelope',
-      'Failure response missing an "error" object: $json',
+      'Failure response is missing an error object.',
     );
   }
   throw BridgeResponseError(
     'malformed_envelope',
-    'Response missing a boolean "success" field: $json',
+    'Response is missing a boolean success field.',
   );
 }

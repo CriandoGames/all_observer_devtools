@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:all_observer/all_observer.dart';
 
@@ -108,7 +109,7 @@ class ConnectionController {
       }
     } catch (error) {
       if (!_isCurrent(generation)) return;
-      _fail('$error');
+      _failUnexpected('Connection', error);
     }
   }
 
@@ -150,7 +151,19 @@ class ConnectionController {
           afterSequence: snapshot.lastSequenceNumber,
         );
         if (!_isCurrent(generation)) return false;
-        store.applySnapshot(snapshot);
+
+        // A hot restart can replace the protocol session between the two
+        // service-extension calls. Even an empty polling response carries
+        // its session for exactly this reason: never install a snapshot if
+        // the backlog (or a live event buffered alongside it) belongs to a
+        // different run.
+        if (backlog.sessionId != snapshot.sessionId ||
+            _pendingDuringSnapshot.any(
+              (event) => event.sessionId != snapshot.sessionId,
+            )) {
+          _setState(DevToolsConnectionState.reconnecting);
+          continue;
+        }
 
         final Map<int, ProtocolEventModel> bySequence =
             <int, ProtocolEventModel>{};
@@ -165,6 +178,31 @@ class ConnectionController {
         }
         final List<ProtocolEventModel> reconciled = bySequence.values.toList()
           ..sort((a, b) => a.sequenceNumber.compareTo(b.sequenceNumber));
+
+        // Prove sequence continuity before exposing the candidate snapshot.
+        // `lastSequenceNumber` on an empty polling response is the producer's
+        // current tail; if it advanced but neither backlog nor live buffering
+        // contains those sequences (for example, a zero-sized/evicted core
+        // buffer), the only safe action is another snapshot.
+        int reconciledTail = snapshot.lastSequenceNumber;
+        bool hasGap = false;
+        for (final ProtocolEventModel event in reconciled) {
+          if (event.sequenceNumber != reconciledTail + 1) {
+            hasGap = true;
+            break;
+          }
+          reconciledTail = event.sequenceNumber;
+        }
+        final int polledTail =
+            backlog.lastSequenceNumber ?? snapshot.lastSequenceNumber;
+        if (hasGap ||
+            polledTail < snapshot.lastSequenceNumber ||
+            reconciledTail < polledTail) {
+          _setState(DevToolsConnectionState.reconnecting);
+          continue;
+        }
+
+        store.applySnapshot(snapshot);
         if (reconciled.isNotEmpty) store.applyEvents(reconciled);
 
         if (!store.needsResync) return true;
@@ -184,18 +222,26 @@ class ConnectionController {
   }
 
   void _onLiveBatch(EventBatchModel batch) {
+    if (_disposed) return;
     if (_bufferingForSnapshot) {
       _pendingDuringSnapshot.addAll(batch.events);
       return;
     }
     final result = store.applyEvents(batch.events);
-    if (result.gapDetected || result.foreignSessionCount > 0) {
+    if (store.needsResync ||
+        result.gapDetected ||
+        result.foreignSessionCount > 0) {
       unawaited(
-        _synchronize(_connectionGeneration).then((bool synced) {
-          if (synced && !_disposed) {
-            _setState(DevToolsConnectionState.connected);
-          }
-        }),
+        _synchronize(_connectionGeneration).then(
+          (bool synced) {
+            if (synced && !_disposed) {
+              _setState(DevToolsConnectionState.connected);
+            }
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            _failUnexpected('Resynchronization', error);
+          },
+        ),
       );
     }
   }
@@ -236,6 +282,13 @@ class ConnectionController {
     if (_disposed) return;
     _errorMessage.value = message;
     _setState(DevToolsConnectionState.error);
+  }
+
+  void _failUnexpected(String operation, Object error) {
+    if (_disposed) return;
+    final String message = '$operation failed (${error.runtimeType}).';
+    developer.log(message, name: 'all_observer_devtools.extension');
+    _fail(message);
   }
 
   /// Cancels the live subscription and closes every `Observable` this

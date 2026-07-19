@@ -157,6 +157,7 @@ void main() {
     final Map<String, Object?> data = response['data'] as Map<String, Object?>;
     expect(data['sessionId'], ObserverProtocol.sessionId);
     expect(data['droppedEventCount'], ObserverProtocol.droppedEventCount);
+    expect(data['transportClearedEventCount'], 0);
     expect(data['lastSequenceNumber'], ObserverProtocol.lastSequenceNumber);
   });
 

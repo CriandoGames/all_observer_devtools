@@ -37,7 +37,7 @@ final class ProtocolSnapshotModel {
         nodes is! List ||
         dependencies is! List ||
         scopes is! List) {
-      throw ProtocolDecodeError('Malformed protocol snapshot: $json');
+      throw ProtocolDecodeError('Malformed protocol snapshot.');
     }
     return ProtocolSnapshotModel(
       protocolVersion: protocolVersion,

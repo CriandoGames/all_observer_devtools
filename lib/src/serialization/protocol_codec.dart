@@ -95,6 +95,7 @@ Map<String, Object?> encodeStatus({
   required int droppedEventCount,
   required int transportDroppedEventCount,
   required int transportOversizedEventCount,
+  required int transportClearedEventCount,
   required int lastSequenceNumber,
 }) => <String, Object?>{
   'sessionId': sessionId,
@@ -104,5 +105,6 @@ Map<String, Object?> encodeStatus({
   'droppedEventCount': droppedEventCount,
   'transportDroppedEventCount': transportDroppedEventCount,
   'transportOversizedEventCount': transportOversizedEventCount,
+  'transportClearedEventCount': transportClearedEventCount,
   'lastSequenceNumber': lastSequenceNumber,
 };

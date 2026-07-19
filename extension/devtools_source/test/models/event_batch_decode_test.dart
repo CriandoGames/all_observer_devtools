@@ -71,15 +71,37 @@ void main() {
       ),
       throwsA(isA<ProtocolDecodeError>()),
     );
+    expect(
+      () => EventBatchModel.fromJson(
+        batch(first: 0, last: 0, events: <Object?>[event(sequence: 0)]),
+      ),
+      throwsA(isA<ProtocolDecodeError>()),
+    );
+    expect(
+      () => EventBatchModel.fromJson(
+        batch(first: null, last: null, events: <Object?>[]),
+      ),
+      throwsA(isA<ProtocolDecodeError>()),
+    );
   });
 
   test('sanitized errors do not echo raw payload values', () {
     const secret = 'super-secret-user-value';
-    try {
-      EventBatchModel.fromJson(batch(session: null, events: secret));
-      fail('decode should fail');
-    } on ProtocolDecodeError catch (error) {
-      expect(error.toString(), isNot(contains(secret)));
+    for (final json in <Map<String, Object?>>[
+      batch(session: null, events: secret),
+      batch(
+        events: <Object?>[
+          <String, Object?>{'eventType': null, 'debugLabel': secret},
+        ],
+      ),
+      batch(events: <Object?>[event(type: secret)]),
+    ]) {
+      try {
+        EventBatchModel.fromJson(json);
+        fail('decode should fail');
+      } on ProtocolDecodeError catch (error) {
+        expect(error.toString(), isNot(contains(secret)));
+      }
     }
   });
 }

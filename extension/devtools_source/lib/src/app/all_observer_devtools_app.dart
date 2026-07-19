@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:devtools_extensions/devtools_extensions.dart';
 import 'package:flutter/material.dart';
 
 import '../connection/connection_controller.dart';
@@ -24,22 +27,79 @@ class AllObserverDevToolsApp extends StatefulWidget {
 }
 
 class _AllObserverDevToolsAppState extends State<AllObserverDevToolsApp> {
-  late final VmServiceAdapter _adapter;
-  late final ConnectionController _controller;
+  late VmServiceAdapter _adapter;
+  late ConnectionController _controller;
+  Object? _serviceIdentity;
+  String? _selectedIsolateId;
+  bool _serviceConnected = false;
 
   @override
   void initState() {
     super.initState();
+    _serviceIdentity = serviceManager.service;
+    _selectedIsolateId =
+        serviceManager.isolateManager.selectedIsolate.value?.id;
+    _serviceConnected = serviceManager.connectedState.value.connected;
     _adapter = VmServiceAdapter();
     _controller = ConnectionController(
       client: _adapter.buildProtocolClient(),
       liveEvents: _adapter.liveEvents,
     );
-    _controller.connect();
+    serviceManager.connectedState.addListener(_handleDevToolsTargetChanged);
+    serviceManager.isolateManager.selectedIsolate.addListener(
+      _handleDevToolsTargetChanged,
+    );
+    _connectIfReady();
+  }
+
+  void _connectIfReady() {
+    if (_serviceConnected && _selectedIsolateId != null) {
+      unawaited(_controller.connect());
+    }
+  }
+
+  /// A controller/client/stream binding is immutable for one selected
+  /// isolate. Replace the whole binding on disconnect, reconnect, isolate
+  /// selection, or hot restart so an in-flight handshake cannot cross those
+  /// boundaries.
+  void _handleDevToolsTargetChanged() {
+    if (!mounted) return;
+    final Object? nextService = serviceManager.service;
+    final String? nextIsolateId =
+        serviceManager.isolateManager.selectedIsolate.value?.id;
+    final bool nextConnected = serviceManager.connectedState.value.connected;
+    if (identical(nextService, _serviceIdentity) &&
+        nextIsolateId == _selectedIsolateId &&
+        nextConnected == _serviceConnected) {
+      return;
+    }
+
+    final VmServiceAdapter oldAdapter = _adapter;
+    final ConnectionController oldController = _controller;
+    final VmServiceAdapter nextAdapter = VmServiceAdapter();
+    final ConnectionController nextController = ConnectionController(
+      client: nextAdapter.buildProtocolClient(),
+      liveEvents: nextAdapter.liveEvents,
+    );
+
+    setState(() {
+      _serviceIdentity = nextService;
+      _selectedIsolateId = nextIsolateId;
+      _serviceConnected = nextConnected;
+      _adapter = nextAdapter;
+      _controller = nextController;
+    });
+    oldController.dispose();
+    oldAdapter.dispose();
+    _connectIfReady();
   }
 
   @override
   void dispose() {
+    serviceManager.connectedState.removeListener(_handleDevToolsTargetChanged);
+    serviceManager.isolateManager.selectedIsolate.removeListener(
+      _handleDevToolsTargetChanged,
+    );
     _controller.dispose();
     _adapter.dispose();
     super.dispose();

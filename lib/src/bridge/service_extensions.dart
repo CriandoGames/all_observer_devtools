@@ -199,6 +199,7 @@ final class ServiceExtensionRegistrar {
       droppedEventCount: ObserverProtocol.droppedEventCount,
       transportDroppedEventCount: _batcher.transportDroppedEventCount,
       transportOversizedEventCount: _batcher.transportOversizedEventCount,
+      transportClearedEventCount: _batcher.transportClearedEventCount,
       lastSequenceNumber: ObserverProtocol.lastSequenceNumber,
     );
     status.addAll(<String, Object?>{

@@ -47,6 +47,8 @@ final class EventBatcher {
   int _transportDroppedEventCount = 0;
   int get transportOversizedEventCount => _transportOversizedEventCount;
   int _transportOversizedEventCount = 0;
+  int get transportClearedEventCount => _transportClearedEventCount;
+  int _transportClearedEventCount = 0;
   bool _streamingEnabled = false;
   bool _disposed = false;
 
@@ -171,12 +173,14 @@ final class EventBatcher {
   void clearPending() {
     _timer?.cancel();
     _timer = null;
+    _transportClearedEventCount += _pending.length;
     _pending.clear();
   }
 
   void dispose() {
     _timer?.cancel();
     _timer = null;
+    _transportClearedEventCount += _pending.length;
     _pending.clear();
     _disposed = true;
     _streamingEnabled = false;

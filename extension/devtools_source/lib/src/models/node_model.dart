@@ -32,7 +32,7 @@ final class NodeModel {
         debugLabel is! String ||
         debugType is! String ||
         createdAtMicros is! int) {
-      throw ProtocolDecodeError('Malformed node snapshot entry: $json');
+      throw ProtocolDecodeError('Malformed node snapshot entry.');
     }
     final Object? valueSummaryJson = json['valueSummary'];
     return NodeModel(

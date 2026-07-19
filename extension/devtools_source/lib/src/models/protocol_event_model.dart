@@ -46,7 +46,7 @@ sealed class ProtocolEventModel {
     final Object? eventType = json['eventType'];
     if (eventType is! String) {
       throw ProtocolDecodeError(
-        'Event JSON is missing a string "eventType" field: $json',
+        'Event JSON is missing a string "eventType" field.',
       );
     }
     return switch (eventType) {
@@ -62,7 +62,7 @@ sealed class ProtocolEventModel {
       ),
       'scopeDisposed' => ScopeDisposedEventModel._fromJson(json),
       'warningRaised' => WarningRaisedEventModel._fromJson(json),
-      _ => throw ProtocolDecodeError('Unknown eventType "$eventType"'),
+      _ => throw ProtocolDecodeError('Unknown eventType.'),
     };
   }
 }
@@ -72,7 +72,9 @@ int _requireInt(Map<String, Object?> json, String key) {
   if (value is int) {
     return value;
   }
-  throw ProtocolDecodeError('Expected int field "$key", got: $value');
+  throw ProtocolDecodeError(
+    'Expected int field "$key" (${value.runtimeType} received).',
+  );
 }
 
 String _requireString(Map<String, Object?> json, String key) {
@@ -80,7 +82,9 @@ String _requireString(Map<String, Object?> json, String key) {
   if (value is String) {
     return value;
   }
-  throw ProtocolDecodeError('Expected string field "$key", got: $value');
+  throw ProtocolDecodeError(
+    'Expected string field "$key" (${value.runtimeType} received).',
+  );
 }
 
 List<int> _requireIntList(Map<String, Object?> json, String key) {
@@ -88,7 +92,9 @@ List<int> _requireIntList(Map<String, Object?> json, String key) {
   if (value is List) {
     return value.cast<int>();
   }
-  throw ProtocolDecodeError('Expected int list field "$key", got: $value');
+  throw ProtocolDecodeError(
+    'Expected int list field "$key" (${value.runtimeType} received).',
+  );
 }
 
 ValueSummaryModel? _optionalValueSummary(
@@ -103,7 +109,8 @@ ValueSummaryModel? _optionalValueSummary(
     return ValueSummaryModel.fromJson(value);
   }
   throw ProtocolDecodeError(
-    'Expected value summary object at "$key", got: $value',
+    'Expected value summary object at "$key" '
+    '(${value.runtimeType} received).',
   );
 }
 

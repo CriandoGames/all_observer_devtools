@@ -24,6 +24,7 @@ NodeCreatedEvent _createdEvent({
   required int sequenceNumber,
   int id = 1,
   String? label,
+  StackTrace? stackTrace,
 }) => NodeCreatedEvent(
   protocolVersion: observerProtocolVersion,
   sessionId: sessionId,
@@ -34,6 +35,7 @@ NodeCreatedEvent _createdEvent({
   kind: ObserverNodeKind.observable,
   debugLabel: label ?? 'node$id',
   debugType: 'int',
+  stackTrace: stackTrace,
 );
 
 void main() {
@@ -187,6 +189,48 @@ void main() {
     expect(exactBatcher.transportOversizedEventCount, 0);
   });
 
+  test('accounts for ASCII, accents, emoji, long labels and stack traces', () {
+    final events = <NodeCreatedEvent>[
+      _createdEvent(sessionId: 's1', sequenceNumber: 1, label: 'ascii'),
+      _createdEvent(sessionId: 'sessão', sequenceNumber: 2, label: 'ação'),
+      _createdEvent(sessionId: 's1', sequenceNumber: 3, label: 'evento 🚀'),
+      _createdEvent(
+        sessionId: 's1',
+        sequenceNumber: 4,
+        label: 'long-label-' * 200,
+      ),
+      _createdEvent(
+        sessionId: 's1',
+        sequenceNumber: 5,
+        stackTrace: StackTrace.fromString('frame.dart:1\n' * 100),
+      ),
+    ];
+
+    for (final event in events) {
+      final probe = <Map<String, Object?>>[];
+      final probeBatcher = EventBatcher(
+        config: const AllObserverDevToolsConfig(maxPayloadBytes: 1 << 20),
+        onBatch: probe.add,
+      )..setStreamingEnabled(true);
+      probeBatcher.add(event);
+      probeBatcher.flush();
+      final exactBytes = utf8.encode(jsonEncode(probe.single)).length;
+      probeBatcher.dispose();
+
+      final emitted = <Map<String, Object?>>[];
+      final exactBatcher = EventBatcher(
+        config: AllObserverDevToolsConfig(maxPayloadBytes: exactBytes),
+        onBatch: emitted.add,
+      )..setStreamingEnabled(true);
+      exactBatcher.add(event);
+      exactBatcher.flush();
+
+      expect(emitted, hasLength(1), reason: 'payload for ${event.debugLabel}');
+      expect(utf8.encode(jsonEncode(emitted.single)).length, exactBytes);
+      exactBatcher.dispose();
+    }
+  });
+
   test('drops and counts a single event one UTF-8 byte above the limit', () {
     final List<Map<String, Object?>> probe = <Map<String, Object?>>[];
     final event = _createdEvent(
@@ -257,6 +301,7 @@ void main() {
 
     expect(batcher.pendingCount, 0);
     expect(batchCount, 0);
+    expect(batcher.transportClearedEventCount, 1);
   });
 
   test(

@@ -10,7 +10,7 @@ final class ScopeResourceModel {
     final Object? resourceId = json['resourceId'];
     final Object? resourceKind = json['resourceKind'];
     if (resourceId is! int || resourceKind is! String) {
-      throw ProtocolDecodeError('Malformed scope resource entry: $json');
+      throw ProtocolDecodeError('Malformed scope resource entry.');
     }
     return ScopeResourceModel(
       resourceId: resourceId,
@@ -40,7 +40,7 @@ final class ScopeModel {
     final Object? debugLabel = json['debugLabel'];
     final Object? resources = json['resources'];
     if (scopeId is! int || debugLabel is! String || resources is! List) {
-      throw ProtocolDecodeError('Malformed scope snapshot entry: $json');
+      throw ProtocolDecodeError('Malformed scope snapshot entry.');
     }
     return ScopeModel(
       scopeId: scopeId,
