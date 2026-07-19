@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:all_observer/all_observer.dart';
 import 'package:all_observer_devtools/src/bridge/event_batcher.dart';
 import 'package:all_observer_devtools/src/configuration/devtools_config.dart';
@@ -7,18 +9,21 @@ import 'package:flutter_test/flutter_test.dart';
 /// recognize yet" so the transport-drop path can be exercised without
 /// waiting for the core to actually add one.
 final class _UnknownProtocolEvent extends ObserverProtocolEvent {
-  const _UnknownProtocolEvent({required super.sequenceNumber, required super.sessionId})
-    : super(
-        protocolVersion: observerProtocolVersion,
-        eventId: 'unknown-$sequenceNumber',
-        timestampMicros: 0,
-      );
+  const _UnknownProtocolEvent({
+    required super.sequenceNumber,
+    required super.sessionId,
+  }) : super(
+         protocolVersion: observerProtocolVersion,
+         eventId: 'unknown-$sequenceNumber',
+         timestampMicros: 0,
+       );
 }
 
 NodeCreatedEvent _createdEvent({
   required String sessionId,
   required int sequenceNumber,
   int id = 1,
+  String? label,
 }) => NodeCreatedEvent(
   protocolVersion: observerProtocolVersion,
   sessionId: sessionId,
@@ -27,7 +32,7 @@ NodeCreatedEvent _createdEvent({
   timestampMicros: sequenceNumber * 1000,
   objectId: ObserverNodeId(id),
   kind: ObserverNodeKind.observable,
-  debugLabel: 'node$id',
+  debugLabel: label ?? 'node$id',
   debugType: 'int',
 );
 
@@ -46,33 +51,36 @@ void main() {
     expect(batchCount, 0);
   });
 
-  test('flushes immediately once maxBatchSize is reached, preserving order', () {
-    final List<Map<String, Object?>> batches = <Map<String, Object?>>[];
-    final EventBatcher batcher = EventBatcher(
-      config: const AllObserverDevToolsConfig(
-        maxBatchSize: 3,
-        batchInterval: Duration(seconds: 30),
-      ),
-      onBatch: batches.add,
-    );
-    addTearDown(batcher.dispose);
-    batcher.setStreamingEnabled(true);
+  test(
+    'flushes immediately once maxBatchSize is reached, preserving order',
+    () {
+      final List<Map<String, Object?>> batches = <Map<String, Object?>>[];
+      final EventBatcher batcher = EventBatcher(
+        config: const AllObserverDevToolsConfig(
+          maxBatchSize: 3,
+          batchInterval: Duration(seconds: 30),
+        ),
+        onBatch: batches.add,
+      );
+      addTearDown(batcher.dispose);
+      batcher.setStreamingEnabled(true);
 
-    for (int i = 1; i <= 3; i++) {
-      batcher.add(_createdEvent(sessionId: 's1', sequenceNumber: i));
-    }
+      for (int i = 1; i <= 3; i++) {
+        batcher.add(_createdEvent(sessionId: 's1', sequenceNumber: i));
+      }
 
-    expect(batches, hasLength(1));
-    final List<Object?> events = batches.single['events'] as List<Object?>;
-    expect(events, hasLength(3));
-    expect(
-      events
-          .cast<Map<String, Object?>>()
-          .map((e) => e['sequenceNumber'])
-          .toList(),
-      <int>[1, 2, 3],
-    );
-  });
+      expect(batches, hasLength(1));
+      final List<Object?> events = batches.single['events'] as List<Object?>;
+      expect(events, hasLength(3));
+      expect(
+        events
+            .cast<Map<String, Object?>>()
+            .map((e) => e['sequenceNumber'])
+            .toList(),
+        <int>[1, 2, 3],
+      );
+    },
+  );
 
   test('flushes on the batch interval timer when below maxBatchSize', () async {
     final List<Map<String, Object?>> batches = <Map<String, Object?>>[];
@@ -127,7 +135,7 @@ void main() {
         batchInterval: Duration(seconds: 30),
         // Small enough that a single encoded event roughly fills it, so 5
         // events must become multiple chunks.
-        maxPayloadBytes: 150,
+        maxPayloadBytes: 400,
       ),
       onBatch: batches.add,
     );
@@ -141,10 +149,72 @@ void main() {
 
     expect(batches.length, greaterThan(1));
     final List<int> allSequences = batches
-        .expand((b) => (b['events'] as List<Object?>).cast<Map<String, Object?>>())
+        .expand(
+          (b) => (b['events'] as List<Object?>).cast<Map<String, Object?>>(),
+        )
         .map((e) => e['sequenceNumber'] as int)
         .toList();
     expect(allSequences, <int>[1, 2, 3, 4, 5]);
+  });
+
+  test('measures the complete JSON envelope in UTF-8 bytes', () {
+    final List<Map<String, Object?>> probe = <Map<String, Object?>>[];
+    final event = _createdEvent(
+      sessionId: 'sessão-🚀',
+      sequenceNumber: 1,
+      label: 'ação com acentos e emoji 😀' * 8,
+    );
+    final probeBatcher = EventBatcher(
+      config: const AllObserverDevToolsConfig(maxPayloadBytes: 1 << 20),
+      onBatch: probe.add,
+    )..setStreamingEnabled(true);
+    probeBatcher.add(event);
+    probeBatcher.flush();
+    final int exactBytes = utf8.encode(jsonEncode(probe.single)).length;
+    probeBatcher.dispose();
+
+    final List<Map<String, Object?>> exact = <Map<String, Object?>>[];
+    final exactBatcher = EventBatcher(
+      config: AllObserverDevToolsConfig(maxPayloadBytes: exactBytes),
+      onBatch: exact.add,
+    )..setStreamingEnabled(true);
+    addTearDown(exactBatcher.dispose);
+    exactBatcher.add(event);
+    exactBatcher.flush();
+
+    expect(exact, hasLength(1));
+    expect(utf8.encode(jsonEncode(exact.single)).length, exactBytes);
+    expect(exactBatcher.transportOversizedEventCount, 0);
+  });
+
+  test('drops and counts a single event one UTF-8 byte above the limit', () {
+    final List<Map<String, Object?>> probe = <Map<String, Object?>>[];
+    final event = _createdEvent(
+      sessionId: 's1',
+      sequenceNumber: 1,
+      label: 'emoji 🚀' * 20,
+    );
+    final probeBatcher = EventBatcher(
+      config: const AllObserverDevToolsConfig(maxPayloadBytes: 1 << 20),
+      onBatch: probe.add,
+    )..setStreamingEnabled(true);
+    probeBatcher.add(event);
+    probeBatcher.flush();
+    final int encodedBytes = utf8.encode(jsonEncode(probe.single)).length;
+    probeBatcher.dispose();
+
+    final List<Map<String, Object?>> emitted = <Map<String, Object?>>[];
+    final batcher = EventBatcher(
+      config: AllObserverDevToolsConfig(maxPayloadBytes: encodedBytes - 1),
+      onBatch: emitted.add,
+    )..setStreamingEnabled(true);
+    addTearDown(batcher.dispose);
+    batcher.add(event);
+    batcher.flush();
+
+    expect(emitted, isEmpty);
+    expect(batcher.transportOversizedEventCount, 1);
+    expect(batcher.transportDroppedEventCount, 1);
   });
 
   test('disabling streaming flushes what was queued, then goes idle', () {
@@ -189,23 +259,26 @@ void main() {
     expect(batchCount, 0);
   });
 
-  test('dispose cancels the pending timer so no late batch is emitted', () async {
-    int batchCount = 0;
-    final EventBatcher batcher = EventBatcher(
-      config: const AllObserverDevToolsConfig(
-        maxBatchSize: 100,
-        batchInterval: Duration(milliseconds: 10),
-      ),
-      onBatch: (_) => batchCount++,
-    );
-    batcher.setStreamingEnabled(true);
-    batcher.add(_createdEvent(sessionId: 's1', sequenceNumber: 1));
+  test(
+    'dispose cancels the pending timer so no late batch is emitted',
+    () async {
+      int batchCount = 0;
+      final EventBatcher batcher = EventBatcher(
+        config: const AllObserverDevToolsConfig(
+          maxBatchSize: 100,
+          batchInterval: Duration(milliseconds: 10),
+        ),
+        onBatch: (_) => batchCount++,
+      );
+      batcher.setStreamingEnabled(true);
+      batcher.add(_createdEvent(sessionId: 's1', sequenceNumber: 1));
 
-    batcher.dispose();
-    await Future<void>.delayed(const Duration(milliseconds: 60));
+      batcher.dispose();
+      await Future<void>.delayed(const Duration(milliseconds: 60));
 
-    expect(batchCount, 0);
-  });
+      expect(batchCount, 0);
+    },
+  );
 
   test('an unencodable event is dropped visibly, not silently', () {
     final List<Map<String, Object?>> batches = <Map<String, Object?>>[];
@@ -221,7 +294,9 @@ void main() {
 
     expect(batcher.transportDroppedEventCount, 0);
 
-    batcher.add(const _UnknownProtocolEvent(sequenceNumber: 1, sessionId: 's1'));
+    batcher.add(
+      const _UnknownProtocolEvent(sequenceNumber: 1, sessionId: 's1'),
+    );
     batcher.add(_createdEvent(sessionId: 's1', sequenceNumber: 2));
     batcher.flush();
 

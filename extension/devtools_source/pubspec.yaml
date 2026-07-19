@@ -2,7 +2,8 @@ name: all_observer_devtools_extension
 description: >-
   Flutter Web DevTools extension panel for all_observer_devtools. Source-only
   package: never published to pub.dev. Its build output is copied into
-  ../devtools/build via `dart run devtools_extensions build_and_copy`.
+  ../devtools/build via `dart run devtools_extensions build_and_copy` with
+  ../devtools as its destination.
 version: 0.1.0
 publish_to: 'none'
 
@@ -15,6 +16,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  cupertino_icons: ^1.0.8
   # Used only for this extension's own UI reactivity (Observable/Observer/
   # Computed/ScopedObserverMixin) — never for Observer Protocol decoding,
   # which stays in lib/src/models and lib/src/connection. Matches the
@@ -29,6 +31,8 @@ dependencies:
   vm_service: '>=13.0.0 <16.0.0'
 
 dev_dependencies:
+  all_observer_devtools:
+    path: ../..
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0

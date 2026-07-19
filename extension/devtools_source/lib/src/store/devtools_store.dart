@@ -80,9 +80,11 @@ class DevToolsStore {
   // interface) so .close() — defined on ObservableMap/ObservableList, not
   // on Map/List — is available in dispose() below.
   final ObservableMap<int, NodeModel> _nodes = <int, NodeModel>{}.obs;
-  final ObservableMap<int, DependencyModel> _dependencies = <int, DependencyModel>{}.obs;
+  final ObservableMap<int, DependencyModel> _dependencies =
+      <int, DependencyModel>{}.obs;
   final ObservableMap<int, ScopeModel> _scopes = <int, ScopeModel>{}.obs;
-  final ObservableList<ProtocolEventModel> _timeline = <ProtocolEventModel>[].obs;
+  final ObservableList<ProtocolEventModel> _timeline =
+      <ProtocolEventModel>[].obs;
   final ObservableList<WarningModel> _warnings = <WarningModel>[].obs;
   final ObservableList<ReconciliationDiagnostic> _diagnostics =
       <ReconciliationDiagnostic>[].obs;
@@ -115,6 +117,19 @@ class DevToolsStore {
 
   NodeModel? nodeById(int objectId) => _nodes[objectId];
   ScopeModel? scopeById(int scopeId) => _scopes[scopeId];
+
+  void markNeedsResync(String code, String message) {
+    Observable.batch(() {
+      _needsResync.value = true;
+      _diagnostics.add(
+        ReconciliationDiagnostic(
+          code: code,
+          message: message,
+          atSequenceNumber: null,
+        ),
+      );
+    });
+  }
 
   /// Dependencies of [trackerId] (what it reads), resolved from the current
   /// dependency graph.
@@ -151,7 +166,9 @@ class DevToolsStore {
 
       _nodes
         ..clear()
-        ..addEntries(snapshot.nodes.map((node) => MapEntry(node.objectId, node)));
+        ..addEntries(
+          snapshot.nodes.map((node) => MapEntry(node.objectId, node)),
+        );
       _dependencies
         ..clear()
         ..addEntries(
@@ -159,7 +176,9 @@ class DevToolsStore {
         );
       _scopes
         ..clear()
-        ..addEntries(snapshot.scopes.map((scope) => MapEntry(scope.scopeId, scope)));
+        ..addEntries(
+          snapshot.scopes.map((scope) => MapEntry(scope.scopeId, scope)),
+        );
 
       if (isNewSession) {
         // A new session has no relationship to the previous one's timeline —
@@ -387,7 +406,8 @@ class DevToolsStore {
           _diagnostics.add(
             ReconciliationDiagnostic(
               code: 'duplicate_scope_disposed',
-              message: 'ScopeDisposed for unrepresented scope ${event.scopeId}.',
+              message:
+                  'ScopeDisposed for unrepresented scope ${event.scopeId}.',
               atSequenceNumber: event.sequenceNumber,
             ),
           );

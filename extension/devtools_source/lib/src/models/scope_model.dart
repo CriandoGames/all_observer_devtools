@@ -1,7 +1,10 @@
 import 'protocol_event_model.dart';
 
 final class ScopeResourceModel {
-  const ScopeResourceModel({required this.resourceId, required this.resourceKind});
+  const ScopeResourceModel({
+    required this.resourceId,
+    required this.resourceKind,
+  });
 
   factory ScopeResourceModel.fromJson(Map<String, Object?> json) {
     final Object? resourceId = json['resourceId'];
@@ -9,7 +12,10 @@ final class ScopeResourceModel {
     if (resourceId is! int || resourceKind is! String) {
       throw ProtocolDecodeError('Malformed scope resource entry: $json');
     }
-    return ScopeResourceModel(resourceId: resourceId, resourceKind: resourceKind);
+    return ScopeResourceModel(
+      resourceId: resourceId,
+      resourceKind: resourceKind,
+    );
   }
 
   final int resourceId;

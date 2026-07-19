@@ -50,6 +50,18 @@ Map<String, Object?> encodeEventBatch({
   };
 }
 
+/// Empty polling response with the same schema as [encodeEventBatch].
+Map<String, Object?> encodeEmptyEventBatch({
+  required String sessionId,
+  required int lastSequenceNumber,
+}) => <String, Object?>{
+  'protocolVersion': observerProtocolVersion,
+  'sessionId': sessionId,
+  'firstSequenceNumber': null,
+  'lastSequenceNumber': lastSequenceNumber,
+  'events': const <Object?>[],
+};
+
 /// Encodes the response for `ext.all_observer.getProtocolInfo`: the version
 /// negotiation surface described in section 15. A client compares
 /// `protocolVersion` against its own supported range before interpreting
@@ -82,6 +94,7 @@ Map<String, Object?> encodeStatus({
   required int pendingBatchCount,
   required int droppedEventCount,
   required int transportDroppedEventCount,
+  required int transportOversizedEventCount,
   required int lastSequenceNumber,
 }) => <String, Object?>{
   'sessionId': sessionId,
@@ -90,5 +103,6 @@ Map<String, Object?> encodeStatus({
   'pendingBatchCount': pendingBatchCount,
   'droppedEventCount': droppedEventCount,
   'transportDroppedEventCount': transportDroppedEventCount,
+  'transportOversizedEventCount': transportOversizedEventCount,
   'lastSequenceNumber': lastSequenceNumber,
 };

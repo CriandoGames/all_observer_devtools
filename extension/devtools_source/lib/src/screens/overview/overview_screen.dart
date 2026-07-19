@@ -29,7 +29,10 @@ class OverviewScreen extends StatelessWidget {
 
       final rows = <(String, String)>[
         ('Package version', controller.protocolInfo?.packageVersion ?? '—'),
-        ('Protocol version', '${controller.protocolInfo?.protocolVersion ?? '—'}'),
+        (
+          'Protocol version',
+          '${controller.protocolInfo?.protocolVersion ?? '—'}',
+        ),
         ('Session', store.sessionId ?? '—'),
         ('Last sequence number', '${store.lastAppliedSequence}'),
         ('Streaming', controller.state.name),
@@ -40,19 +43,13 @@ class OverviewScreen extends StatelessWidget {
         ('Active scopes', '${store.scopes.length}'),
         ('Warnings received', '${store.warnings.length}'),
         ('Timeline events retained', '${store.timeline.length}'),
-        (
-          'Core ring-buffer dropped events',
-          '${store.coreDroppedEventCount}',
-        ),
+        ('Core ring-buffer dropped events', '${store.coreDroppedEventCount}'),
         (
           'Snapshot applied at',
           store.snapshotAppliedAt?.toIso8601String() ?? '—',
         ),
         ('Needs resync', store.needsResync ? 'yes' : 'no'),
-        (
-          'Reconciliation diagnostics',
-          '${store.diagnostics.length}',
-        ),
+        ('Reconciliation diagnostics', '${store.diagnostics.length}'),
       ];
 
       return ListView.separated(
@@ -67,7 +64,10 @@ class OverviewScreen extends StatelessWidget {
               children: [
                 SizedBox(
                   width: 260,
-                  child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
                 ),
                 Expanded(
                   child: Text(

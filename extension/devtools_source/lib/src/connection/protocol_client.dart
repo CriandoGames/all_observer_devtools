@@ -12,7 +12,10 @@ import '../models/status_model.dart';
 /// function so [ProtocolClient] has no direct VM Service dependency and is
 /// fully unit-testable with a fake.
 typedef ExtensionCaller =
-    Future<Map<String, Object?>> Function(String method, Map<String, String> args);
+    Future<Map<String, Object?>> Function(
+      String method,
+      Map<String, String> args,
+    );
 
 /// Typed request/response wrapper around the six `ext.all_observer.*`
 /// extensions. Every method unwraps the bridge's success/error envelope
@@ -62,7 +65,10 @@ final class ProtocolClient {
   }
 
   Future<void> clearBuffer() async {
-    await _call(DevToolsServiceExtensionNames.clearBuffer, const <String, String>{});
+    await _call(
+      DevToolsServiceExtensionNames.clearBuffer,
+      const <String, String>{},
+    );
   }
 
   Future<BridgeStatusModel> getStatus() async {

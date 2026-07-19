@@ -85,6 +85,25 @@ void main() {
     );
   });
 
+  test('empty getEvents has the same complete batch contract', () {
+    final Map<String, Object?> response = registrar.debugHandle(
+      DevToolsServiceExtensions.getEvents,
+      <String, String>{
+        'afterSequence': '${ObserverProtocol.lastSequenceNumber}',
+      },
+    );
+
+    final Map<String, Object?> data = response['data'] as Map<String, Object?>;
+    expect(data, containsPair('protocolVersion', observerProtocolVersion));
+    expect(data, containsPair('sessionId', ObserverProtocol.sessionId));
+    expect(data, containsPair('firstSequenceNumber', null));
+    expect(
+      data,
+      containsPair('lastSequenceNumber', ObserverProtocol.lastSequenceNumber),
+    );
+    expect(data, containsPair('events', isEmpty));
+  });
+
   test('getEvents rejects a non-integer afterSequence', () {
     final Map<String, Object?> response = registrar.debugHandle(
       DevToolsServiceExtensions.getEvents,
@@ -92,7 +111,8 @@ void main() {
     );
 
     expect(response['success'], isFalse);
-    final Map<String, Object?> error = response['error'] as Map<String, Object?>;
+    final Map<String, Object?> error =
+        response['error'] as Map<String, Object?>;
     expect(error['code'], DevToolsErrorCode.invalidParameter);
   });
 

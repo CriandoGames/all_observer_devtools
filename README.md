@@ -4,16 +4,15 @@ Opt-in Flutter DevTools integration for
 [`all_observer`](https://github.com/CriandoGames/all_observer): a read-only
 diagnostics bridge from the Observer Protocol to the Dart VM Service.
 
-> **Status: runtime bridge + unpublished extension panel.** The package root
-> ships the piece an app depends on and initializes — the Observer Protocol
+> **Status: release-candidate implementation, pending upstream protocol
+> publication and real-host smoke testing.** The package root ships the piece
+> an app depends on and initializes — the Observer Protocol
 > consumer, the `ext.all_observer.*` VM Service extensions, and the batched
 > event transport. `extension/` now also contains the Flutter Web DevTools
 > panel (Overview / Nodes / Timeline / Dependencies / Scopes / Warnings) that
-> reads this data, as a companion extension source package. It has not yet
-> been built and copied into `extension/devtools/build`, has no example app
-> wired up, and its one VM-Service-specific file
-> (`vm_service_adapter.dart`) has not been verified against a real DevTools
-> host — see [The extension panel](#the-extension-panel) below.
+> reads this data. The panel is built into `extension/devtools/build`, the
+> adapter compiles against the locked DevTools packages, and an example app is
+> included. A real Chrome/DevTools smoke test is still required before release.
 
 ## Installing
 
@@ -119,7 +118,7 @@ packages that are also imported at runtime by consuming apps:
 extension/
   devtools/
     config.yaml        # extension metadata devtools_extensions reads
-    build/              # build output goes here (currently a .gitkeep only)
+    build/              # checked-in release build loaded by DevTools
   devtools_source/      # the actual Flutter Web app, its own pubspec.yaml
     lib/
       main.dart
@@ -153,7 +152,7 @@ observes other apps' `all_observer` usage is itself a live example of
 ```
 dart run devtools_extensions build_and_copy \
   --source=. \
-  --dest=../devtools/build
+  --dest=../devtools
 ```
 
 **Testing it locally**, once built, DevTools' simulated environment can load
@@ -176,19 +175,12 @@ fresh snapshot (bounded retries); nothing is guessed or invented when data
 is missing — unknown node references and disposal failures surface as
 explicit diagnostics instead.
 
-**Known gaps in this pass:**
+**Known release blockers:**
 
-- Not yet built/copied into `extension/devtools/build` — no `.gitkeep`
-  replacement yet.
-- `VmServiceAdapter` (`extension/devtools_source/lib/src/connection/vm_service_adapter.dart`)
-  is the only file touching `serviceManager`/`package:vm_service` directly;
-  its exact API surface (`serviceManager.isolateManager.selectedIsolate`,
-  `service.streamListen`, `service.callServiceExtension`) was written from
-  established knowledge of `devtools_app_shared`/`vm_service`, not verified
-  against the locally installed package versions — flagged in a doc comment
-  in that file for review against `flutter analyze` output.
-- No CI wiring, no `dart run devtools_extensions validate` run yet (neither
-  is runnable in the environment this was built in).
+- The Observer Protocol v1 branch must be published as a numbered
+  `all_observer` release before the Git dependency can be replaced.
+- A real Chrome/Flutter DevTools run must still cover isolate switching, hot
+  restart/reload, disconnect/reconnect, high-frequency events, and redaction.
 - Dependencies screen is tabular only — no graph rendering (allowed by the
   spec as an MVP fallback).
 - Read-only by design: no way to trigger app actions from the panel.

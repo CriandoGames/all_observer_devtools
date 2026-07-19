@@ -129,9 +129,11 @@ abstract final class AllObserverDevTools {
   static void _postBatch(Map<String, Object?> batch) {
     try {
       developer.postEvent(devtoolsEventStreamKind, batch);
-    } catch (_) {
-      // Posting is diagnostics-only infrastructure; a failure here (e.g. no
-      // VM Service attached) must never surface to the reactive system.
+    } catch (error) {
+      developer.log(
+        'Failed to post a DevTools event batch (${error.runtimeType}).',
+        name: 'all_observer_devtools',
+      );
     }
   }
 

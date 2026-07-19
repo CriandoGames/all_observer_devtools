@@ -1,0 +1,7 @@
+.dart_tool/
+/build/
+coverage/
+/extension/devtools_source/
+/example/build/
+**/*.iml
+**/*.log

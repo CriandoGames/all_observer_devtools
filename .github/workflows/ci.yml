@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {channel: stable, cache: true}
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  extension:
+    runs-on: ubuntu-latest
+    defaults: {run: {working-directory: extension/devtools_source}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {channel: stable, cache: true}
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  web-and-contract:
+    runs-on: ubuntu-latest
+    defaults: {run: {working-directory: extension/devtools_source}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {channel: stable, cache: true}
+      - run: flutter pub get
+      - run: flutter test test/connection/snapshot_stream_integration_test.dart test/connection/get_events_contract_test.dart test/models/event_batch_decode_test.dart
+      - run: flutter build web --release
+      - run: dart run devtools_extensions build_and_copy --source=. --dest=../devtools
+      - run: dart run devtools_extensions validate --package=../..
+      - name: Ensure copied panel exists and is current
+        working-directory: .
+        run: |
+          test -s extension/devtools/build/main.dart.js
+          git diff --exit-code -- extension/devtools/build
+
+  payload-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {channel: stable, cache: true}
+      - run: flutter pub get
+      - run: flutter test test/bridge/event_batcher_test.dart test/bridge/service_extension_handler_test.dart
+
+  publish-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {channel: stable, cache: true}
+      - run: flutter pub get
+      - run: flutter pub publish --dry-run

@@ -40,57 +40,74 @@ class ConnectionController {
 
   static const int _maxSynchronizeAttempts = 3;
 
-  final Observable<DevToolsConnectionState> _state = Observable<DevToolsConnectionState>(
-    DevToolsConnectionState.disconnected,
-  );
+  final Observable<DevToolsConnectionState> _state =
+      Observable<DevToolsConnectionState>(DevToolsConnectionState.disconnected);
   final Observable<String?> _errorMessage = Observable<String?>(null);
-  final Observable<ProtocolInfoModel?> _protocolInfo = Observable<ProtocolInfoModel?>(null);
+  final Observable<ProtocolInfoModel?> _protocolInfo =
+      Observable<ProtocolInfoModel?>(null);
+  final Observable<int> _decodeFailureCount = Observable<int>(0);
   StreamSubscription<EventBatchModel>? _liveSubscription;
   bool _bufferingForSnapshot = false;
-  final List<ProtocolEventModel> _pendingDuringSnapshot = <ProtocolEventModel>[];
+  final List<ProtocolEventModel> _pendingDuringSnapshot =
+      <ProtocolEventModel>[];
+  Future<bool>? _activeResync;
+  int _connectionGeneration = 0;
   bool _disposed = false;
 
   DevToolsConnectionState get state => _state.value;
   String? get errorMessage => _errorMessage.value;
   ProtocolInfoModel? get protocolInfo => _protocolInfo.value;
+  int get decodeFailureCount => _decodeFailureCount.value;
 
   /// Starts (or restarts) the connection: subscribes to live events first,
   /// then requests protocol info and a snapshot. Safe to call again after
   /// [DevToolsConnectionState.error] or [DevToolsConnectionState.incompatible]
   /// to retry.
   Future<void> connect() async {
+    if (_disposed) return;
+    final int generation = ++_connectionGeneration;
+    // Logically cancel any synchronization owned by the previous generation.
+    // Its future may still complete, but generation checks prevent mutation.
+    _activeResync = null;
+    _bufferingForSnapshot = false;
+    _pendingDuringSnapshot.clear();
     _errorMessage.value = null;
     _setState(DevToolsConnectionState.connecting);
     _liveSubscription?.cancel();
-    _liveSubscription = _liveEvents.listen(
-      _onLiveBatch,
-      onError: (Object error) => _fail('Live event stream error: $error'),
-    );
+    _liveSubscription = _liveEvents.listen(_onLiveBatch, onError: _onLiveError);
 
     try {
       _setState(DevToolsConnectionState.loadingProtocolInfo);
       final ProtocolInfoModel info = await _client.getProtocolInfo();
+      if (!_isCurrent(generation)) return;
       _protocolInfo.value = info;
       if (!info.isCompatibleWith(extensionSupportedProtocolVersion)) {
         _setState(DevToolsConnectionState.incompatible);
         return;
       }
 
+      // Subscribe and enable the producer before taking the base snapshot.
+      // Everything created from this point is either in the live buffer, the
+      // protocol backlog, or both (duplicates are removed by sequence).
+      await _client.setStreaming(enabled: true);
+      if (!_isCurrent(generation)) return;
       _setState(DevToolsConnectionState.loadingSnapshot);
-      final bool synced = await _synchronize();
+      final bool synced = await _synchronize(generation);
       if (!synced) {
         return; // _synchronize already set state to error.
       }
 
-      await _client.setStreaming(enabled: true);
+      if (!_isCurrent(generation)) return;
       _setState(DevToolsConnectionState.connected);
     } on BridgeResponseError catch (error) {
+      if (!_isCurrent(generation)) return;
       if (error.code == 'bridge_not_initialized') {
         _setState(DevToolsConnectionState.unavailable);
       } else {
         _fail('${error.code}: ${error.message}');
       }
     } catch (error) {
+      if (!_isCurrent(generation)) return;
       _fail('$error');
     }
   }
@@ -101,28 +118,63 @@ class ConnectionController {
   /// [_maxSynchronizeAttempts] times if the replay itself reveals another
   /// gap (e.g. very high event throughput during the resync window) before
   /// giving up and surfacing an error rather than looping forever.
-  Future<bool> _synchronize() async {
+  Future<bool> _synchronize(int generation) {
+    final Future<bool>? active = _activeResync;
+    if (active != null) return active;
+    final Future<bool> created = _runSynchronize(generation);
+    _activeResync = created;
+    void release() {
+      if (identical(_activeResync, created)) _activeResync = null;
+    }
+
+    unawaited(
+      created.then<void>(
+        (_) => release(),
+        onError: (Object _, StackTrace stackTrace) {
+          release();
+        },
+      ),
+    );
+    return created;
+  }
+
+  Future<bool> _runSynchronize(int generation) async {
     for (int attempt = 1; attempt <= _maxSynchronizeAttempts; attempt++) {
+      if (!_isCurrent(generation)) return false;
       _bufferingForSnapshot = true;
       _pendingDuringSnapshot.clear();
+      try {
+        final snapshot = await _client.getSnapshot();
+        if (!_isCurrent(generation)) return false;
+        final EventBatchModel backlog = await _client.getEvents(
+          afterSequence: snapshot.lastSequenceNumber,
+        );
+        if (!_isCurrent(generation)) return false;
+        store.applySnapshot(snapshot);
 
-      final snapshot = await _client.getSnapshot();
-      store.applySnapshot(snapshot);
+        final Map<int, ProtocolEventModel> bySequence =
+            <int, ProtocolEventModel>{};
+        for (final ProtocolEventModel event in <ProtocolEventModel>[
+          ...backlog.events,
+          ..._pendingDuringSnapshot,
+        ]) {
+          if (event.sessionId == snapshot.sessionId &&
+              event.sequenceNumber > snapshot.lastSequenceNumber) {
+            bySequence[event.sequenceNumber] = event;
+          }
+        }
+        final List<ProtocolEventModel> reconciled = bySequence.values.toList()
+          ..sort((a, b) => a.sequenceNumber.compareTo(b.sequenceNumber));
+        if (reconciled.isNotEmpty) store.applyEvents(reconciled);
 
-      final List<ProtocolEventModel> buffered = List<ProtocolEventModel>.of(
-        _pendingDuringSnapshot,
-      );
-      _pendingDuringSnapshot.clear();
-      _bufferingForSnapshot = false;
-
-      if (buffered.isNotEmpty) {
-        store.applyEvents(buffered);
+        if (!store.needsResync) return true;
+        _setState(DevToolsConnectionState.reconnecting);
+      } finally {
+        if (_isCurrent(generation)) {
+          _pendingDuringSnapshot.clear();
+          _bufferingForSnapshot = false;
+        }
       }
-
-      if (!store.needsResync) {
-        return true;
-      }
-      _setState(DevToolsConnectionState.reconnecting);
     }
     _fail(
       'Could not reach a consistent snapshot after '
@@ -139,14 +191,40 @@ class ConnectionController {
     final result = store.applyEvents(batch.events);
     if (result.gapDetected || result.foreignSessionCount > 0) {
       unawaited(
-        _synchronize().then((bool synced) {
-          if (synced) {
+        _synchronize(_connectionGeneration).then((bool synced) {
+          if (synced && !_disposed) {
             _setState(DevToolsConnectionState.connected);
           }
         }),
       );
     }
   }
+
+  void _onLiveError(Object error, StackTrace stackTrace) {
+    if (_disposed) return;
+    _decodeFailureCount.value++;
+    const String message = 'A live event batch could not be decoded safely.';
+    _errorMessage.value = message;
+    store.markNeedsResync('decode_failure', message);
+    unawaited(
+      _synchronize(_connectionGeneration).then(
+        (bool synced) {
+          if (synced && !_disposed) {
+            _setState(DevToolsConnectionState.connected);
+          }
+        },
+        onError: (Object syncError, StackTrace syncStack) {
+          _fail(
+            'Resynchronization failed after a decode error '
+            '(${syncError.runtimeType}).',
+          );
+        },
+      ),
+    );
+  }
+
+  bool _isCurrent(int generation) =>
+      !_disposed && generation == _connectionGeneration;
 
   void _setState(DevToolsConnectionState newState) {
     if (!_disposed) {
@@ -155,6 +233,7 @@ class ConnectionController {
   }
 
   void _fail(String message) {
+    if (_disposed) return;
     _errorMessage.value = message;
     _setState(DevToolsConnectionState.error);
   }
@@ -165,10 +244,12 @@ class ConnectionController {
   /// throughout (no garbage-collected observables).
   void dispose() {
     _disposed = true;
+    _connectionGeneration++;
     unawaited(_liveSubscription?.cancel());
     _state.close();
     _errorMessage.close();
     _protocolInfo.close();
+    _decodeFailureCount.close();
     store.dispose();
   }
 }

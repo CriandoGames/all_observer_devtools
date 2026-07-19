@@ -26,95 +26,96 @@ class _TimelineScreenState extends State<TimelineScreen> {
   @override
   Widget build(BuildContext context) {
     return Observer(() {
-    final List<ProtocolEventModel> source =
-        _paused ? (_pausedSnapshot ??= widget.store.timeline) : widget.store.timeline;
+      final List<ProtocolEventModel> source = _paused
+          ? (_pausedSnapshot ??= widget.store.timeline)
+          : widget.store.timeline;
 
-    final List<ProtocolEventModel> filtered = _search.isEmpty
-        ? source
-        : source.where((e) {
-            final needle = _search.toLowerCase();
-            return _eventTypeName(e).toLowerCase().contains(needle) ||
-                '${e.primarySubjectId ?? ''}'.contains(needle);
-          }).toList();
+      final List<ProtocolEventModel> filtered = _search.isEmpty
+          ? source
+          : source.where((e) {
+              final needle = _search.toLowerCase();
+              return _eventTypeName(e).toLowerCase().contains(needle) ||
+                  '${e.primarySubjectId ?? ''}'.contains(needle);
+            }).toList();
 
-    final List<ProtocolEventModel> ordered = filtered.reversed.toList();
+      final List<ProtocolEventModel> ordered = filtered.reversed.toList();
 
-    return Row(
-      children: [
-        Expanded(
-          flex: 3,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          prefixIcon: Icon(Icons.search),
-                          hintText: 'Filter by event type or subject id',
-                          border: OutlineInputBorder(),
+      return Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            prefixIcon: Icon(Icons.search),
+                            hintText: 'Filter by event type or subject id',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (value) => setState(() => _search = value),
                         ),
-                        onChanged: (value) => setState(() => _search = value),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      tooltip: _paused ? 'Resume' : 'Pause (view only)',
-                      icon: Icon(_paused ? Icons.play_arrow : Icons.pause),
-                      onPressed: () => setState(() {
-                        _paused = !_paused;
-                        if (!_paused) {
-                          _pausedSnapshot = null;
-                        }
-                      }),
-                    ),
-                    IconButton(
-                      tooltip: 'Clear local view',
-                      icon: const Icon(Icons.clear_all),
-                      onPressed: () => setState(() {
-                        _pausedSnapshot = <ProtocolEventModel>[];
-                        _paused = true;
-                      }),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: ordered.length,
-                  itemBuilder: (context, index) {
-                    final ProtocolEventModel event = ordered[index];
-                    return ListTile(
-                      dense: true,
-                      selected: identical(event, _selected),
-                      leading: SizedBox(
-                        width: 56,
-                        child: Text('#${event.sequenceNumber}'),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        tooltip: _paused ? 'Resume' : 'Pause (view only)',
+                        icon: Icon(_paused ? Icons.play_arrow : Icons.pause),
+                        onPressed: () => setState(() {
+                          _paused = !_paused;
+                          if (!_paused) {
+                            _pausedSnapshot = null;
+                          }
+                        }),
                       ),
-                      title: Text(_eventTypeName(event)),
-                      subtitle: event.primarySubjectId == null
-                          ? null
-                          : Text('subject #${event.primarySubjectId}'),
-                      onTap: () => setState(() => _selected = event),
-                    );
-                  },
+                      IconButton(
+                        tooltip: 'Clear local view',
+                        icon: const Icon(Icons.clear_all),
+                        onPressed: () => setState(() {
+                          _pausedSnapshot = <ProtocolEventModel>[];
+                          _paused = true;
+                        }),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: ordered.length,
+                    itemBuilder: (context, index) {
+                      final ProtocolEventModel event = ordered[index];
+                      return ListTile(
+                        dense: true,
+                        selected: identical(event, _selected),
+                        leading: SizedBox(
+                          width: 56,
+                          child: Text('#${event.sequenceNumber}'),
+                        ),
+                        title: Text(_eventTypeName(event)),
+                        subtitle: event.primarySubjectId == null
+                            ? null
+                            : Text('subject #${event.primarySubjectId}'),
+                        onTap: () => setState(() => _selected = event),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        const VerticalDivider(width: 1),
-        Expanded(
-          flex: 2,
-          child: _selected == null
-              ? const Center(child: Text('Select an event'))
-              : _EventDetail(event: _selected!),
-        ),
-      ],
-    );
+          const VerticalDivider(width: 1),
+          Expanded(
+            flex: 2,
+            child: _selected == null
+                ? const Center(child: Text('Select an event'))
+                : _EventDetail(event: _selected!),
+          ),
+        ],
+      );
     });
   }
 }
@@ -149,13 +150,19 @@ class _EventDetail extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text(_eventTypeName(event), style: Theme.of(context).textTheme.titleMedium),
+        Text(
+          _eventTypeName(event),
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
         const SizedBox(height: 8),
         for (final row in rows) Text(row),
         if (event.stackTrace != null) ...[
           const Divider(),
           const Text('Stack trace:'),
-          SelectableText(event.stackTrace!, style: Theme.of(context).textTheme.bodySmall),
+          SelectableText(
+            event.stackTrace!,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         ],
       ],
     );
@@ -201,7 +208,10 @@ class _EventDetail extends StatelessWidget {
       'addedDependencyIds: ${e.addedDependencyIds}',
       'removedDependencyIds: ${e.removedDependencyIds}',
     ],
-    ScopeCreatedEventModel e => ['scopeId: ${e.scopeId}', 'debugLabel: ${e.debugLabel}'],
+    ScopeCreatedEventModel e => [
+      'scopeId: ${e.scopeId}',
+      'debugLabel: ${e.debugLabel}',
+    ],
     ScopeResourceRegisteredEventModel e => [
       'scopeId: ${e.scopeId}',
       'resourceId: ${e.resourceId}',

@@ -22,49 +22,53 @@ class _DependenciesScreenState extends State<DependenciesScreen> {
   @override
   Widget build(BuildContext context) {
     return Observer(() {
-    final List<DependencyModel> edges = widget.store.dependencies
-      ..sort((a, b) => a.trackerId.compareTo(b.trackerId));
+      final List<DependencyModel> edges = widget.store.dependencies
+        ..sort((a, b) => a.trackerId.compareTo(b.trackerId));
 
-    return Row(
-      children: [
-        Expanded(
-          flex: 3,
-          child: ListView.builder(
-            itemCount: edges.length,
-            itemBuilder: (context, index) {
-              final DependencyModel edge = edges[index];
-              final tracker = widget.store.nodeById(edge.trackerId);
-              return ExpansionTile(
-                title: Text(
-                  '${tracker?.debugLabel ?? 'tracker'} (#${edge.trackerId}) '
-                  'depends on ${edge.dependencyIds.length} node(s)',
-                ),
-                children: [
-                  for (final int depId in edge.dependencyIds)
-                    ListTile(
-                      dense: true,
-                      title: Text(
-                        '#$depId — ${widget.store.nodeById(depId)?.debugLabel ?? 'unknown node'}',
+      return Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: ListView.builder(
+              itemCount: edges.length,
+              itemBuilder: (context, index) {
+                final DependencyModel edge = edges[index];
+                final tracker = widget.store.nodeById(edge.trackerId);
+                return ExpansionTile(
+                  title: Text(
+                    '${tracker?.debugLabel ?? 'tracker'} (#${edge.trackerId}) '
+                    'depends on ${edge.dependencyIds.length} node(s)',
+                  ),
+                  children: [
+                    for (final int depId in edge.dependencyIds)
+                      ListTile(
+                        dense: true,
+                        title: Text(
+                          '#$depId — ${widget.store.nodeById(depId)?.debugLabel ?? 'unknown node'}',
+                        ),
+                        trailing: TextButton(
+                          child: const Text('Focus'),
+                          onPressed: () =>
+                              setState(() => _focusedNodeId = depId),
+                        ),
                       ),
-                      trailing: TextButton(
-                        child: const Text('Focus'),
-                        onPressed: () => setState(() => _focusedNodeId = depId),
-                      ),
-                    ),
-                ],
-              );
-            },
+                  ],
+                );
+              },
+            ),
           ),
-        ),
-        const VerticalDivider(width: 1),
-        Expanded(
-          flex: 2,
-          child: _focusedNodeId == null
-              ? const Center(child: Text('Focus a node to see its edges'))
-              : _FocusedNodeEdges(nodeId: _focusedNodeId!, store: widget.store),
-        ),
-      ],
-    );
+          const VerticalDivider(width: 1),
+          Expanded(
+            flex: 2,
+            child: _focusedNodeId == null
+                ? const Center(child: Text('Focus a node to see its edges'))
+                : _FocusedNodeEdges(
+                    nodeId: _focusedNodeId!,
+                    store: widget.store,
+                  ),
+          ),
+        ],
+      );
     });
   }
 }
@@ -89,12 +93,17 @@ class _FocusedNodeEdges extends StatelessWidget {
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const Divider(),
-          Text('Depends on (${deps.length})', style: Theme.of(context).textTheme.titleSmall),
+          Text(
+            'Depends on (${deps.length})',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
           if (deps.isEmpty)
             const Text('—')
           else
             for (final id in deps)
-              Text('#$id — ${store.nodeById(id)?.debugLabel ?? 'unknown node'}'),
+              Text(
+                '#$id — ${store.nodeById(id)?.debugLabel ?? 'unknown node'}',
+              ),
           const SizedBox(height: 12),
           Text(
             'Depended on by (${dependents.length})',
@@ -104,7 +113,9 @@ class _FocusedNodeEdges extends StatelessWidget {
             const Text('—')
           else
             for (final id in dependents)
-              Text('#$id — ${store.nodeById(id)?.debugLabel ?? 'unknown tracker'}'),
+              Text(
+                '#$id — ${store.nodeById(id)?.debugLabel ?? 'unknown tracker'}',
+              ),
         ],
       );
     });

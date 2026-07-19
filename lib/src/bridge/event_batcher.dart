@@ -45,10 +45,13 @@ final class EventBatcher {
   /// eventos deve ficar visível").
   int get transportDroppedEventCount => _transportDroppedEventCount;
   int _transportDroppedEventCount = 0;
+  int get transportOversizedEventCount => _transportOversizedEventCount;
+  int _transportOversizedEventCount = 0;
   bool _streamingEnabled = false;
   bool _disposed = false;
 
   bool get streamingEnabled => _streamingEnabled;
+  bool get isDisposed => _disposed;
 
   /// Number of events currently buffered and not yet flushed.
   int get pendingCount => _pending.length;
@@ -100,7 +103,6 @@ final class EventBatcher {
 
   void _emitInChunks(String sessionId, List<ObserverProtocolEvent> events) {
     final List<ObserverProtocolEvent> chunk = <ObserverProtocolEvent>[];
-    int approxBytes = 0;
     int droppedBySerialization = 0;
 
     void flushChunk() {
@@ -118,22 +120,38 @@ final class EventBatcher {
         droppedBySerialization += chunk.length;
       }
       chunk.clear();
-      approxBytes = 0;
     }
 
     for (final ObserverProtocolEvent event in events) {
-      int size;
+      Map<String, Object?> candidate;
       try {
-        size = jsonEncode(encodeEvent(event)).length;
+        candidate = encodeEventBatch(
+          sessionId: sessionId,
+          events: <ObserverProtocolEvent>[...chunk, event],
+        );
       } on SerializationError {
         droppedBySerialization++;
         continue;
       }
-      if (chunk.isNotEmpty && approxBytes + size > _config.maxPayloadBytes) {
+      if (_jsonUtf8Bytes(candidate) > _config.maxPayloadBytes &&
+          chunk.isNotEmpty) {
         flushChunk();
+        try {
+          candidate = encodeEventBatch(
+            sessionId: sessionId,
+            events: <ObserverProtocolEvent>[event],
+          );
+        } on SerializationError {
+          droppedBySerialization++;
+          continue;
+        }
+      }
+      if (_jsonUtf8Bytes(candidate) > _config.maxPayloadBytes) {
+        _transportOversizedEventCount++;
+        droppedBySerialization++;
+        continue;
       }
       chunk.add(event);
-      approxBytes += size;
     }
     flushChunk();
 
@@ -141,6 +159,9 @@ final class EventBatcher {
       _transportDroppedEventCount += droppedBySerialization;
     }
   }
+
+  int _jsonUtf8Bytes(Map<String, Object?> value) =>
+      utf8.encode(jsonEncode(value)).length;
 
   /// Discards whatever is pending without emitting it. Distinct from
   /// [flush]: this is the DevTools-local "clear buffer" action (section 10,

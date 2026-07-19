@@ -9,13 +9,16 @@ final class ProtocolInfoModel {
     required this.capabilities,
   });
 
-  factory ProtocolInfoModel.fromJson(Map<String, Object?> json) => ProtocolInfoModel(
-    protocolVersion: json['protocolVersion'] as int,
-    packageVersion: json['packageVersion'] as String,
-    minimumSupportedProtocolVersion: json['minimumSupportedProtocolVersion'] as int,
-    maximumSupportedProtocolVersion: json['maximumSupportedProtocolVersion'] as int,
-    capabilities: (json['capabilities'] as List).cast<String>(),
-  );
+  factory ProtocolInfoModel.fromJson(Map<String, Object?> json) =>
+      ProtocolInfoModel(
+        protocolVersion: json['protocolVersion'] as int,
+        packageVersion: json['packageVersion'] as String,
+        minimumSupportedProtocolVersion:
+            json['minimumSupportedProtocolVersion'] as int,
+        maximumSupportedProtocolVersion:
+            json['maximumSupportedProtocolVersion'] as int,
+        capabilities: (json['capabilities'] as List).cast<String>(),
+      );
 
   final int protocolVersion;
   final String packageVersion;

@@ -30,6 +30,7 @@ void main() {
       pendingBatchCount: 3,
       droppedEventCount: 1,
       transportDroppedEventCount: 0,
+      transportOversizedEventCount: 2,
       lastSequenceNumber: 42,
     );
 
@@ -40,6 +41,7 @@ void main() {
       'pendingBatchCount': 3,
       'droppedEventCount': 1,
       'transportDroppedEventCount': 0,
+      'transportOversizedEventCount': 2,
       'lastSequenceNumber': 42,
     });
   });

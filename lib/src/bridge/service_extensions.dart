@@ -29,21 +29,28 @@ final class ServiceExtensionRegistrar {
   ServiceExtensionRegistrar({
     required EventBatcher batcher,
     required String packageVersion,
+    ExtensionRegistration registerExtension = developer.registerExtension,
   }) : _batcher = batcher,
-       _packageVersion = packageVersion;
+       _packageVersion = packageVersion,
+       _registerExtension = registerExtension;
 
   final EventBatcher _batcher;
   final String _packageVersion;
+  final ExtensionRegistration _registerExtension;
   bool _registered = false;
+  static ServiceExtensionRegistrar? _active;
 
   /// Names actually registered by this instance's last [registerAll] call,
   /// exposed for tests — not part of the public contract.
   final List<String> debugRegisteredNames = <String>[];
+  final List<String> debugDuplicateNames = <String>[];
+  final Map<String, String> registrationFailures = <String, String>{};
 
   void registerAll() {
     if (_registered) {
       return;
     }
+    _active = this;
     _registered = true;
     for (final String name in DevToolsServiceExtensions.all) {
       _register(name);
@@ -52,25 +59,36 @@ final class ServiceExtensionRegistrar {
 
   void _register(String name) {
     try {
-      developer.registerExtension(
+      _registerExtension(
         name,
         (String method, Map<String, String> parameters) async =>
             developer.ServiceExtensionResponse.result(
-              jsonEncode(debugHandle(name, parameters)),
+              jsonEncode(
+                _active?.debugHandle(name, parameters) ??
+                    buildErrorEnvelope(
+                      code: DevToolsErrorCode.internalError,
+                      message: 'Bridge is not initialized.',
+                    ),
+              ),
             ),
       );
       debugRegisteredNames.add(name);
-    } catch (_) {
-      // A hot restart re-runs main() in an isolate that, from the VM
-      // Service's point of view, never died — registerExtension throws if
-      // the same name is registered twice in that isolate's lifetime.
-      // Section 17 requires the bridge to survive hot restart, so a
-      // duplicate-registration failure here is expected and non-fatal: the
-      // previously-registered handler (which closes over the *old*
-      // EventBatcher/ObserverProtocol session) simply keeps serving, which
-      // is why AllObserverDevTools always builds a fresh
-      // ServiceExtensionRegistrar per initialize() rather than reusing one
-      // — see devtools_bridge.dart.
+    } on ArgumentError catch (error) {
+      if (error.message == 'Extension already registered: $name') {
+        debugDuplicateNames.add(name);
+        return;
+      }
+      registrationFailures[name] = 'ArgumentError';
+      developer.log(
+        'VM extension registration failed for $name: ArgumentError',
+        name: 'all_observer_devtools',
+      );
+    } catch (error) {
+      registrationFailures[name] = error.runtimeType.toString();
+      developer.log(
+        'VM extension registration failed for $name: ${error.runtimeType}',
+        name: 'all_observer_devtools',
+      );
     }
   }
 
@@ -101,7 +119,14 @@ final class ServiceExtensionRegistrar {
         ),
       };
     } catch (error) {
-      return _err(DevToolsErrorCode.internalError, 'Unexpected error: $error');
+      developer.log(
+        'Service extension handler failed (${error.runtimeType}).',
+        name: 'all_observer_devtools',
+      );
+      return _err(
+        DevToolsErrorCode.internalError,
+        'Unexpected internal bridge error (${error.runtimeType}).',
+      );
     }
   }
 
@@ -130,11 +155,12 @@ final class ServiceExtensionRegistrar {
         .where((event) => event.sequenceNumber > afterSequence)
         .toList();
     if (events.isEmpty) {
-      return _ok(<String, Object?>{
-        'events': const <Object?>[],
-        'firstSequenceNumber': null,
-        'lastSequenceNumber': ObserverProtocol.lastSequenceNumber,
-      });
+      return _ok(
+        encodeEmptyEventBatch(
+          sessionId: ObserverProtocol.sessionId,
+          lastSequenceNumber: ObserverProtocol.lastSequenceNumber,
+        ),
+      );
     }
     try {
       return _ok(
@@ -154,7 +180,9 @@ final class ServiceExtensionRegistrar {
       );
     }
     _batcher.setStreamingEnabled(value == 'true');
-    return _ok(<String, Object?>{'streamingEnabled': _batcher.streamingEnabled});
+    return _ok(<String, Object?>{
+      'streamingEnabled': _batcher.streamingEnabled,
+    });
   }
 
   Map<String, Object?> _handleClearBuffer() {
@@ -163,17 +191,29 @@ final class ServiceExtensionRegistrar {
   }
 
   Map<String, Object?> _handleGetStatus() {
-    return _ok(
-      encodeStatus(
-        sessionId: ObserverProtocol.sessionId,
-        streamingEnabled: _batcher.streamingEnabled,
-        coreBufferedEventCount: ObserverProtocol.events.length,
-        pendingBatchCount: _batcher.pendingCount,
-        droppedEventCount: ObserverProtocol.droppedEventCount,
-        transportDroppedEventCount: _batcher.transportDroppedEventCount,
-        lastSequenceNumber: ObserverProtocol.lastSequenceNumber,
-      ),
+    final Map<String, Object?> status = encodeStatus(
+      sessionId: ObserverProtocol.sessionId,
+      streamingEnabled: _batcher.streamingEnabled,
+      coreBufferedEventCount: ObserverProtocol.events.length,
+      pendingBatchCount: _batcher.pendingCount,
+      droppedEventCount: ObserverProtocol.droppedEventCount,
+      transportDroppedEventCount: _batcher.transportDroppedEventCount,
+      transportOversizedEventCount: _batcher.transportOversizedEventCount,
+      lastSequenceNumber: ObserverProtocol.lastSequenceNumber,
     );
+    status.addAll(<String, Object?>{
+      'registeredExtensionNames': List<String>.unmodifiable(
+        debugRegisteredNames,
+      ),
+      'duplicateExtensionNames': List<String>.unmodifiable(debugDuplicateNames),
+      'registrationFailures': Map<String, String>.unmodifiable(
+        registrationFailures,
+      ),
+      'servedSessionId': ObserverProtocol.sessionId,
+      'bridgeState': _batcher.isDisposed ? 'disposed' : 'initialized',
+      'protocolVersion': observerProtocolVersion,
+    });
+    return _ok(status);
   }
 
   Map<String, Object?> _ok(Map<String, Object?> data) => buildSuccessEnvelope(
@@ -190,3 +230,6 @@ final class ServiceExtensionRegistrar {
   Map<String, Object?> _err(String code, String message) =>
       buildErrorEnvelope(code: code, message: message);
 }
+
+typedef ExtensionRegistration =
+    void Function(String method, developer.ServiceExtensionHandler handler);

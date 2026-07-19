@@ -43,7 +43,9 @@ final class NodeModel {
       createdAtMicros: createdAtMicros,
       valueSummary: valueSummaryJson == null
           ? null
-          : ValueSummaryModel.fromJson(valueSummaryJson as Map<String, Object?>),
+          : ValueSummaryModel.fromJson(
+              valueSummaryJson as Map<String, Object?>,
+            ),
     );
   }
 
@@ -84,6 +86,7 @@ final class NodeModel {
     isDisposed: isDisposed ?? this.isDisposed,
     disposedAtMicros: disposedAtMicros ?? this.disposedAtMicros,
     disposeReason: disposeReason ?? this.disposeReason,
-    listenerCountAtDispose: listenerCountAtDispose ?? this.listenerCountAtDispose,
+    listenerCountAtDispose:
+        listenerCountAtDispose ?? this.listenerCountAtDispose,
   );
 }

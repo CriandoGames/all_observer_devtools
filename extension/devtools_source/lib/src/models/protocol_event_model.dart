@@ -91,7 +91,10 @@ List<int> _requireIntList(Map<String, Object?> json, String key) {
   throw ProtocolDecodeError('Expected int list field "$key", got: $value');
 }
 
-ValueSummaryModel? _optionalValueSummary(Map<String, Object?> json, String key) {
+ValueSummaryModel? _optionalValueSummary(
+  Map<String, Object?> json,
+  String key,
+) {
   final Object? value = json[key];
   if (value == null) {
     return null;
@@ -99,7 +102,9 @@ ValueSummaryModel? _optionalValueSummary(Map<String, Object?> json, String key) 
   if (value is Map<String, Object?>) {
     return ValueSummaryModel.fromJson(value);
   }
-  throw ProtocolDecodeError('Expected value summary object at "$key", got: $value');
+  throw ProtocolDecodeError(
+    'Expected value summary object at "$key", got: $value',
+  );
 }
 
 ({

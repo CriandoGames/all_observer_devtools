@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:devtools_extensions/devtools_extensions.dart';
 import 'package:vm_service/vm_service.dart';
@@ -14,25 +15,20 @@ import 'protocol_client.dart';
 /// Service API surface and unit-testable with fakes — see
 /// `test/connection/connection_controller_test.dart`.
 ///
-/// **Verify against your installed `devtools_app_shared`/`vm_service`
-/// versions.** The exact accessor names on the global `serviceManager`
-/// (`isolateManager.selectedIsolate`, `service`, `connectedState`) come
-/// from the documented DevTools extension pattern, but this file was
-/// written without the ability to run `flutter analyze` against the real
-/// packages — treat any compile error here the same way earlier
-/// mismatches in this project were resolved: it's the single place to fix,
-/// nothing downstream needs to change.
 final class VmServiceAdapter {
   VmServiceAdapter();
 
   StreamSubscription<Event>? _extensionEventSubscription;
   StreamController<EventBatchModel>? _liveEventsController;
+  int decodeFailureCount = 0;
+  String? lastDecodeDiagnostic;
 
   /// The isolate this extension talks to. DevTools extensions officially
   /// support only the isolate selected when the bridge was initialized
   /// (implementation spec section 11) — this extension does not aggregate
   /// across isolates.
-  String? get _selectedIsolateId => serviceManager.isolateManager.selectedIsolate.value?.id;
+  String? get _selectedIsolateId =>
+      serviceManager.isolateManager.selectedIsolate.value?.id;
 
   VmService? get _vmService => serviceManager.service;
 
@@ -58,7 +54,9 @@ final class VmServiceAdapter {
       // Already subscribed elsewhere (e.g. DevTools core, or a previous
       // instance of this extension after a hot restart) — not an error.
     }
-    _extensionEventSubscription = service.onExtensionEvent.listen((Event event) {
+    _extensionEventSubscription = service.onExtensionEvent.listen((
+      Event event,
+    ) {
       if (event.extensionKind != devtoolsEventStreamKind) {
         return;
       }
@@ -70,7 +68,17 @@ final class VmServiceAdapter {
         _liveEventsController?.add(
           EventBatchModel.fromJson(Map<String, Object?>.from(data)),
         );
-      } catch (_) {
+      } catch (error) {
+        decodeFailureCount++;
+        lastDecodeDiagnostic =
+            'Live event batch decode failed (${error.runtimeType}).';
+        developer.log(
+          lastDecodeDiagnostic!,
+          name: 'all_observer_devtools.extension',
+        );
+        _liveEventsController?.addError(
+          LiveBatchDecodeException(lastDecodeDiagnostic!),
+        );
         // A batch this extension cannot decode must never crash the
         // stream — see the ban on silent/guessed interpretation, but a
         // decode failure here is a diagnostics-only concern, not fatal.
@@ -86,7 +94,8 @@ final class VmServiceAdapter {
   /// Builds a [ProtocolClient] bound to the currently selected isolate.
   /// Call sites should rebuild this (or re-check [_selectedIsolateId]) if
   /// the selected isolate changes, per section 11.
-  ProtocolClient buildProtocolClient() => ProtocolClient(callExtension: _callExtension);
+  ProtocolClient buildProtocolClient() =>
+      ProtocolClient(callExtension: _callExtension);
 
   Future<Map<String, Object?>> _callExtension(
     String method,
@@ -120,4 +129,13 @@ final class VmServiceAdapter {
     unawaited(_liveEventsController?.close());
     _liveEventsController = null;
   }
+}
+
+final class LiveBatchDecodeException implements Exception {
+  const LiveBatchDecodeException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
 }

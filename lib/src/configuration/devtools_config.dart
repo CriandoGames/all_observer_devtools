@@ -31,9 +31,9 @@ final class AllObserverDevToolsConfig {
   /// flush without waiting for [batchInterval].
   final int maxBatchSize;
 
-  /// Soft cap (in bytes, approximated from the encoded JSON string) on a
-  /// single batch payload. A batch is flushed before exceeding this even if
-  /// [maxBatchSize] has not been reached.
+  /// Hard cap in UTF-8 bytes for the complete encoded JSON batch envelope.
+  /// A single event that cannot fit is dropped visibly through the transport
+  /// drop and oversized-event counters.
   final int maxPayloadBytes;
 
   /// Forwarded to `ObserverProtocolConfig.eventBufferSize`: the size of the
